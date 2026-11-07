@@ -205,6 +205,11 @@ def search_client(make_archive):
     ]:
         message = EmailMessage()
         message['Subject'] = subject
+        message['Date'] = {
+            'Project update': 'Sat, 1 Jan 2022 00:00:00 +0000',
+            'Project planning': 'Sun, 2 Jan 2022 00:00:00 +0000',
+            'Personal update': 'Mon, 3 Jan 2022 00:00:00 +0000',
+        }[subject]
         message['From'] = sender
         message['To'] = to
         if cc:
@@ -239,6 +244,26 @@ def test_search_results_across_messages(search_client, query, subjects):
     soup = BeautifulSoup(response.data, 'html.parser')
     assert {row.select_one('strong').get_text() for row in soup.select('.message-row')} == subjects
     assert f'{len(subjects)} message' in soup.select_one('.section-heading').get_text()
+
+
+@pytest.mark.parametrize(('query', 'subjects'), [
+    ('before:2022-01-02', {'Project update'}),
+    ('after:2022-01-02', {'Project planning', 'Personal update'}),
+    ('before:2022-01-03 after:2022-01-02', {'Project planning'}),
+    ('-before:2022-01-02', {'Project planning', 'Personal update'}),
+])
+def test_date_search_operators(search_client, query, subjects):
+    response = search_client.get('/', query_string={'q': query})
+    assert response.status_code == 200
+    soup = BeautifulSoup(response.data, 'html.parser')
+    found = {strong.get_text() for row in soup.select('.message-row')
+             if (strong := row.select_one('strong')) is not None}
+    assert found == subjects
+
+
+@pytest.mark.parametrize('query', ['before:2022-02-30', 'after:2022/01/01', 'before:'])
+def test_invalid_date_search_operator_is_rejected(search_client, query):
+    assert search_client.get('/', query_string={'q': query}).status_code == 400
 
 
 def test_search_displays_escaped_fts_conditions(search_client):

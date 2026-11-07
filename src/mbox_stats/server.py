@@ -103,7 +103,7 @@ def _search_parameters() -> tuple[str, int]:
     return query, page
 
 
-def _search_expressions(query: str) -> tuple[str, str]:
+def _search_expressions(query: str) -> tuple[str, str, list[tuple[str, int, bool]]]:
     fields = {
         'label': 'labels', 'labels': 'labels',
         'from': '{from_name from_addr}', 'from_name': 'from_name', 'from_addr': 'from_addr',
@@ -112,6 +112,7 @@ def _search_expressions(query: str) -> tuple[str, str]:
     }
     included = []
     excluded = []
+    date_filters = []
     end = 0
     for match in re.finditer(r'(?:[^\s"]|"(?:""|[^"])*")+', query):
         if query[end:match.start()].strip():
@@ -124,6 +125,17 @@ def _search_expressions(query: str) -> tuple[str, str]:
         field = ''
         if ':' in term and not term.startswith('"'):
             name, _, term = term.partition(':')
+            if name.lower() in ('before', 'after'):
+                if not re.fullmatch(r'\d{4}-\d{2}-\d{2}', term):
+                    abort(400, description='Invalid search expression.')
+                try:
+                    date = datetime.date.fromisoformat(term)
+                except ValueError:
+                    abort(400, description='Invalid search expression.')
+                timestamp = int(datetime.datetime.combine(
+                    date, datetime.time.min, datetime.timezone.utc).timestamp())
+                date_filters.append((name.lower(), timestamp, negative))
+                continue
             field = fields.get(name.lower(), '')
             if not field:
                 abort(400, description='Invalid search expression.')
@@ -139,7 +151,7 @@ def _search_expressions(query: str) -> tuple[str, str]:
         (excluded if negative else included).append(expression)
     if query[end:].strip():
         abort(400, description='Invalid search expression.')
-    return ' AND '.join(included), ' OR '.join(excluded)
+    return ' AND '.join(included), ' OR '.join(excluded), date_filters
 
 
 @overload
@@ -243,7 +255,7 @@ def _register_routes(app: Flask):
         conn = _connection()
         source = 'messages m'
         parameters = []
-        included, excluded = _search_expressions(query)
+        included, excluded, date_filters = _search_expressions(query)
         if query:
             try:
                 for expression in (included, excluded):
@@ -260,7 +272,17 @@ def _register_routes(app: Flask):
                 if expression:
                     conditions.append(f'm.id {operator} (SELECT rowid FROM messages_fts WHERE messages_fts MATCH ?)')
                     parameters.append(expression)
-            source += ' WHERE ' + ' AND '.join(conditions)
+            for operator, timestamp, negative in date_filters:
+                if operator == 'before':
+                    condition = 'm.date_utc >= ?' if negative else 'm.date_utc < ?'
+                else:
+                    condition = 'm.date_utc < ?' if negative else 'm.date_utc >= ?'
+                if negative:
+                    condition = f'(m.date_utc IS NULL OR {condition})'
+                conditions.append(condition)
+                parameters.append(timestamp)
+            if conditions:
+                source += ' WHERE ' + ' AND '.join(conditions)
         total = conn.execute(f'SELECT count(*) FROM {source}', parameters).fetchone()[0]
         messages = conn.execute(
             f'SELECT m.* FROM {source} ORDER BY m.date_utc DESC, m.id DESC LIMIT ? OFFSET ?',
