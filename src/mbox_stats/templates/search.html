@@ -4,6 +4,12 @@
   <h1>{{ 'Search Results' if q else 'All Messages' }}</h1>
   <span class="muted">{{ '{:,}'.format(total) }} {{ 'message' if total == 1 else 'messages' }}</span>
 </div>
+{% if included or excluded %}
+<div class="search-expressions">
+  {% if included %}<div>Include: <code>{{ included }}</code></div>{% endif %}
+  {% if excluded %}<div>Exclude: <code>{{ excluded }}</code></div>{% endif %}
+</div>
+{% endif %}
 <div class="message-list">
   {% for message in messages %}
   <a class="message-row" href="{{ url_for('message_detail', message_id=message.id, q=q, page=page) }}">

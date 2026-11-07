@@ -86,11 +86,27 @@ def test_search_uses_existing_fts_fields(app, query):
     assert b'1 message' in response.data
 
 
-@pytest.mark.parametrize('query', ['"', 'subject:', 'bogus:word', 'word AND'])
+@pytest.mark.parametrize('query', ['"', 'subject:', 'bogus:word', '-', 'word "unfinished'])
 def test_bad_search_is_a_readable_error(app, query):
     response = app.test_client().get('/', query_string={'q': query})
     assert response.status_code == 400
     assert b'Invalid search expression' in response.data
+
+
+@pytest.mark.parametrize(('query', 'found'), [
+    ('First From:sender@example.com To:bob@example.com label:important Subject:message', True),
+    ('"First message" -From:other@example.com', True),
+    ('First, -Bar', True),
+    ('-From:other@example.com', True),
+    ('-From:sender@example.com', False),
+    ('First -label:Important', False),
+    ('First -missing -Subject:message', False),
+    ('First OR message', False),
+])
+def test_combined_search(app, query, found):
+    response = app.test_client().get('/', query_string={'q': query})
+    assert response.status_code == 200
+    assert (b'First message</strong>' in response.data) is found
 
 
 @pytest.mark.parametrize('page', ['0', '-1', 'abc', '1000000001'])
@@ -174,6 +190,111 @@ def make_archive(tmp_path):
         return app
 
     return create
+
+
+@pytest.fixture
+def search_client(make_archive):
+    messages = []
+    for subject, sender, to, cc, labels, body in [
+        ('Project update', 'Alice <alice@example.com>', 'Bob <bob@example.com>',
+         'Carol <carol@example.com>', 'Important, Work', 'alpha report'),
+        ('Project planning', 'Adam <adam@bertil.com>', 'Carol <carol@example.com>',
+         'Bob <bob@example.com>', 'Work', 'beta report'),
+        ('Personal update', 'Alice <alice@example.com>', 'Dave <dave@example.com>',
+         '', 'Personal', 'alpha notes'),
+    ]:
+        message = EmailMessage()
+        message['Subject'] = subject
+        message['From'] = sender
+        message['To'] = to
+        if cc:
+            message['Cc'] = cc
+        if subject == 'Personal update':
+            message['Bcc'] = 'Eve <eve@example.com>'
+        message['X-Gmail-Labels'] = labels
+        message.set_content(body)
+        messages.append(message)
+    return make_archive(messages).test_client()
+
+
+@pytest.mark.parametrize(('query', 'subjects'), [
+    ('label:work', {'Project update', 'Project planning'}),
+    ('FROM:alice@example.com', {'Project update', 'Personal update'}),
+    ('From:Alice', {'Project update', 'Personal update'}),
+    ('To:bob@example.com', {'Project update', 'Project planning'}),
+    ('To:eve@example.com', {'Personal update'}),
+    ('subject:update', {'Project update', 'Personal update'}),
+    ('"project update"', {'Project update'}),
+    ('Subject:"project update"', {'Project update'}),
+    ('report label:work -From:adam@bertil.com', {'Project update'}),
+    ('-label:work -Subject:personal', set()),
+    ('-label:work', {'Personal update'}),
+    ('project, -From:adam@bertil.com', {'Project update'}),
+    ('project -To:bob@example.com', set()),
+    ('', {'Project update', 'Project planning', 'Personal update'}),
+])
+def test_search_results_across_messages(search_client, query, subjects):
+    response = search_client.get('/', query_string={'q': query})
+    assert response.status_code == 200
+    soup = BeautifulSoup(response.data, 'html.parser')
+    assert {row.select_one('strong').get_text() for row in soup.select('.message-row')} == subjects
+    assert f'{len(subjects)} message' in soup.select_one('.section-heading').get_text()
+
+
+def test_search_displays_escaped_fts_conditions(search_client):
+    response = search_client.get('/', query_string={'q': 'Subject:"project update" -From:adam@bertil.com'})
+    soup = BeautifulSoup(response.data, 'html.parser')
+    expressions = soup.select_one('.search-expressions').get_text(' ', strip=True)
+    assert 'Include: subject : "project update"' in expressions
+    assert 'Exclude: {from_name from_addr} : "adam@bertil.com"' in expressions
+    response = search_client.get('/', query_string={'q': '"<script>alert</script>"'})
+    assert b'<script>' not in response.data
+    assert b'&lt;script&gt;' in response.data
+
+
+@pytest.mark.parametrize('path', ['/', '/?q=label:Work', '/messages/1', '/?q=bogus:word'])
+def test_search_help_lists_operators_and_all_labels(search_client, path):
+    soup = BeautifulSoup(search_client.get(path).data, 'html.parser')
+    help_section = soup.select_one('.search-tools details')
+    assert help_section is not None
+    assert not help_section.has_attr('open')
+    summary = help_section.select_one('summary')
+    assert summary is not None
+    assert summary.get_text() == 'Search operators'
+    for operator in ('from:', 'from_name:', 'from_addr:', 'to:', 'recipients:',
+                     'subject:', 'preview:', 'label:', 'labels:', '-from:'):
+        assert operator in help_section.get_text()
+    assert [label.get_text() for label in help_section.select('.available-labels code')] == [
+        'label:"Important"', 'label:"Personal"', 'label:"Work"',
+    ]
+
+
+def test_search_help_escapes_labels_and_quotes(app, archive):
+    label = '<script>"Team work"</script>'
+    with sqlite3.connect(archive[0]) as conn:
+        conn.execute('INSERT INTO labels (name) VALUES (?)', (label,))
+    response = app.test_client().get('/')
+    soup = BeautifulSoup(response.data, 'html.parser')
+    label_code = soup.select_one('.available-labels code')
+    assert label_code is not None
+    assert label_code.get_text() == 'label:"<script>""Team work""</script>"'
+    assert soup.select_one('.available-labels script') is None
+
+
+def test_search_help_without_labels(make_archive):
+    soup = BeautifulSoup(make_archive([]).test_client().get('/').data, 'html.parser')
+    labels = soup.select_one('.available-labels')
+    assert labels is not None
+    assert 'No labels in this archive.' in labels.get_text()
+
+
+def test_filtered_pagination_keeps_total_and_query(search_client, monkeypatch):
+    monkeypatch.setattr(server, 'PAGE_SIZE', 1)
+    query = 'label:work -From:nobody'
+    soup = BeautifulSoup(search_client.get('/', query_string={'q': query, 'page': 2}).data, 'html.parser')
+    assert '2 messages' in soup.select_one('.section-heading').get_text()
+    assert [row.select_one('strong').get_text() for row in soup.select('.message-row')] == ['Project update']
+    assert soup.select_one('.pagination a')['href'] == '/?q=label:work+-From:nobody&page=1'
 
 
 @pytest.fixture

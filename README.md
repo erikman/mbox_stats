@@ -25,9 +25,18 @@ entry point also works: `uv run python -m mbox_stats.server --db ... --mbox ...`
 
 The interface lists newest messages first, with 50 messages per page. Search uses
 the existing SQLite FTS5 index: subject, sender name/address, recipients, labels,
-and body preview. Examples include `invoice`, `"project update"`, `subject:report`,
-`labels:Important`, and `invoice OR receipt`. Quote addresses or terms containing
-punctuation, for example `from_addr:"alice@example.com"`.
+and body preview. Separate terms with whitespace to require all of them, and use
+double quotes for phrases. Filters include `label:Important`, `From:alice@example.com`,
+`To:bob@example.com`, and `Subject:report`. Prefix any term or filter with `-` to
+exclude matches, for example `invoice -label:Spam -From:alice@example.com`.
+Filter names are case-insensitive. `From:` searches sender names and addresses;
+`To:` searches all recipients, including Cc and Bcc. Existing field names such as
+`labels:`, `from_addr:`, `recipients:`, and `preview:` also work. The results page
+shows the included and excluded FTS expressions.
+
+Matching uses FTS5 tokens and phrases, not substring matching; punctuation separates
+tokens. Explicit FTS Boolean operators such as `OR` are treated as search terms,
+not operators.
 
 Search does **not** cover entire bodies. The indexer stores a 500-character preview
 by default; `--preview-length` changes this when building the database, and zero

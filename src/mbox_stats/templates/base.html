@@ -10,11 +10,34 @@
   <a class="skip-link" href="#main">Skip to content</a>
   <header class="masthead">
     <a class="brand" href="{{ url_for('search') }}">Mail Archive</a>
+    <div class="search-tools">
     <form class="search-form" action="{{ url_for('search') }}" method="get" role="search">
       <label class="sr-only" for="search">Search emails</label>
       <input id="search" name="q" type="search" value="{{ q }}" placeholder="Search emails" maxlength="2000">
       <button type="submit">Search</button>
     </form>
+    <details class="search-help">
+      <summary>Search operators</summary>
+      <dl class="operator-list">
+        <dt><code>from:alice@example.com</code></dt><dd>Sender name or address. Also: <code>from_name:</code>, <code>from_addr:</code>.</dd>
+        <dt><code>to:bob@example.com</code></dt><dd>To, Cc or Bcc recipients. Alias: <code>recipients:</code>.</dd>
+        <dt><code>subject:report</code></dt><dd>Subject.</dd>
+        <dt><code>preview:meeting</code></dt><dd>Indexed body preview, not the full message.</dd>
+        <dt><code>label:Work</code></dt><dd>Label. Alias: <code>labels:</code>.</dd>
+        <dt><code>"project update"</code></dt><dd>Phrase. Also: <code>subject:"project update"</code>.</dd>
+        <dt><code>-from:alice@example.com</code></dt><dd>Exclude a term, phrase or field with <code>-</code>.</dd>
+        <dt><code>report label:Work</code></dt><dd>All terms must match. Operator names are case-insensitive; <code>AND</code> and <code>OR</code> are not Boolean operators.</dd>
+      </dl>
+      <h2>Available labels</h2>
+      <ul class="available-labels">
+        {% for label in search_labels %}
+        <li><code>label:"{{ label|replace('"', '""') }}"</code></li>
+        {% else %}
+        <li class="muted">No labels in this archive.</li>
+        {% endfor %}
+      </ul>
+    </details>
+    </div>
   </header>
   <main id="main" class="workspace">{% block content %}{% endblock %}</main>
 </body>

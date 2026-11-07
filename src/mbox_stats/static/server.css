@@ -17,15 +17,25 @@ button, .button { display: inline-flex; justify-content: center; align-items: ce
 .secondary { background: var(--paper); border-color: var(--line); color: var(--ink); }
 .button:hover, button:hover { filter: brightness(.95); text-decoration: none; }
 :focus-visible { outline: 3px solid var(--warm); outline-offset: 3px; }
-.masthead { display: flex; align-items: center; gap: 40px; padding: 20px max(24px, calc((100% - 1200px) / 2)); background: var(--paper); border-bottom: 1px solid var(--line); }
+.masthead { display: flex; align-items: baseline; gap: 40px; padding: 20px max(24px, calc((100% - 1200px) / 2)); background: var(--paper); border-bottom: 1px solid var(--line); }
 .brand { color: var(--ink); font: bold 25px Georgia, serif; white-space: nowrap; }
-.search-form { display: flex; gap: 8px; width: min(100%, 620px); }
+.search-tools { width: min(100%, 620px); min-width: 0; }
+.search-form { display: flex; gap: 8px; width: 100%; }
 .search-form input { min-width: 0; flex: 1; padding: 8px 12px; border: 1px solid #a9b9af; border-radius: 4px; background: #fafcfb; }
+.search-help { margin-top: 8px; font-size: 13px; overflow-wrap: anywhere; }
+.search-help summary { color: var(--accent); cursor: pointer; width: fit-content; padding: 4px 0; }
+.operator-list { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr); gap: 8px 16px; margin: 12px 0 20px; }
+.operator-list dd { margin: 0; color: var(--muted); }
+.search-help h2 { font-size: 13px; margin: 0 0 8px; }
+.available-labels { display: flex; flex-wrap: wrap; gap: 6px 18px; list-style: none; margin: 0; padding: 0; max-height: 180px; overflow-y: auto; }
+.available-labels li { min-width: 0; max-width: 100%; }
 .workspace { max-width: 1248px; margin: 0 auto; padding: 28px 24px 56px; }
 h1 { font: bold 25px Georgia, serif; margin: 0; overflow-wrap: anywhere; }
 h2 { font-size: 17px; margin: 0 0 16px; }
 .section-heading { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; margin-bottom: 20px; }
 .muted { color: var(--muted); }
+.search-expressions { color: var(--muted); font-size: 13px; margin: -8px 0 16px; overflow-wrap: anywhere; }
+.search-expressions code { color: var(--ink); }
 .message-list { border-top: 1px solid var(--line); }
 .message-row { display: grid; grid-template-columns: minmax(120px, 185px) minmax(0, 1fr) 175px; gap: 24px; padding: 19px 12px; border-bottom: 1px solid var(--line); color: var(--ink); background: var(--paper); }
 .message-row:hover { background: var(--accent-light); text-decoration: none; }
@@ -61,7 +71,9 @@ h2 { font-size: 17px; margin: 0 0 16px; }
 .skip-link:focus { top: 12px; }
 @media (max-width: 700px) {
   .masthead { flex-wrap: wrap; gap: 16px; padding: 18px 16px; }
-  .search-form { width: 100%; }
+  .search-tools { width: 100%; }
+  .operator-list { grid-template-columns: minmax(0, 1fr); gap: 4px; }
+  .operator-list dd { margin-bottom: 8px; }
   .workspace { padding: 24px 16px 40px; }
   .section-heading { flex-wrap: wrap; gap: 8px; }
   .message-row { grid-template-columns: minmax(0, 1fr) 145px; gap: 6px 12px; padding: 16px 8px; }

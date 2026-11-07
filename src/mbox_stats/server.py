@@ -2,6 +2,7 @@ import argparse
 import datetime
 import io
 import logging
+import re
 import sqlite3
 from contextlib import closing
 from email.message import EmailMessage, Message, MIMEPart
@@ -102,6 +103,45 @@ def _search_parameters() -> tuple[str, int]:
     return query, page
 
 
+def _search_expressions(query: str) -> tuple[str, str]:
+    fields = {
+        'label': 'labels', 'labels': 'labels',
+        'from': '{from_name from_addr}', 'from_name': 'from_name', 'from_addr': 'from_addr',
+        'to': 'recipients', 'recipients': 'recipients',
+        'subject': 'subject', 'preview': 'preview',
+    }
+    included = []
+    excluded = []
+    end = 0
+    for match in re.finditer(r'(?:[^\s"]|"(?:""|[^"])*")+', query):
+        if query[end:match.start()].strip():
+            abort(400, description='Invalid search expression.')
+        end = match.end()
+        term = match.group()
+        negative = term.startswith('-')
+        if negative:
+            term = term[1:]
+        field = ''
+        if ':' in term and not term.startswith('"'):
+            name, _, term = term.partition(':')
+            field = fields.get(name.lower(), '')
+            if not field:
+                abort(400, description='Invalid search expression.')
+        if term.startswith('"') and term.endswith('"') and len(term) >= 2:
+            term = term[1:-1].replace('""', '"')
+        elif '"' in term:
+            abort(400, description='Invalid search expression.')
+        if not term:
+            abort(400, description='Invalid search expression.')
+        expression = '"' + term.replace('"', '""') + '"'
+        if field:
+            expression = f'{field} : {expression}'
+        (excluded if negative else included).append(expression)
+    if query[end:].strip():
+        abort(400, description='Invalid search expression.')
+    return ' AND '.join(included), ' OR '.join(excluded)
+
+
 @overload
 def _load_message(message_id: int, raw: Literal[False] = False) -> EmailMessage: ...
 
@@ -166,6 +206,11 @@ def _download(data: bytes, filename: str) -> Response:
 
 
 def _register_routes(app: Flask):
+    @app.context_processor
+    def search_reference():
+        labels = _connection().execute('SELECT name FROM labels ORDER BY name COLLATE NOCASE, name').fetchall()
+        return {'search_labels': [label['name'] for label in labels]}
+
     @app.after_request
     def response_headers(response):
         response.headers.setdefault('Content-Security-Policy', APP_CSP)
@@ -198,23 +243,32 @@ def _register_routes(app: Flask):
         conn = _connection()
         source = 'messages m'
         parameters = []
+        included, excluded = _search_expressions(query)
         if query:
             try:
-                conn.execute('SELECT rowid FROM messages_fts WHERE messages_fts MATCH ? LIMIT 1', (query,)).fetchone()
+                for expression in (included, excluded):
+                    if expression:
+                        conn.execute('SELECT rowid FROM messages_fts WHERE messages_fts MATCH ? LIMIT 1',
+                                     (expression,)).fetchone()
             except sqlite3.OperationalError as exc:
                 if any(marker in str(exc).lower() for marker in
                        ('fts5:', 'unterminated string', 'no such column')):
                     abort(400, description='Invalid search expression.')
                 raise
-            source += ' JOIN messages_fts ON messages_fts.rowid = m.id WHERE messages_fts MATCH ?'
-            parameters.append(query)
+            conditions = []
+            for expression, operator in ((included, 'IN'), (excluded, 'NOT IN')):
+                if expression:
+                    conditions.append(f'm.id {operator} (SELECT rowid FROM messages_fts WHERE messages_fts MATCH ?)')
+                    parameters.append(expression)
+            source += ' WHERE ' + ' AND '.join(conditions)
         total = conn.execute(f'SELECT count(*) FROM {source}', parameters).fetchone()[0]
         messages = conn.execute(
             f'SELECT m.* FROM {source} ORDER BY m.date_utc DESC, m.id DESC LIMIT ? OFFSET ?',
             (*parameters, PAGE_SIZE, (page - 1) * PAGE_SIZE),
         ).fetchall()
         return render_template('search.html', messages=messages, total=total, q=query,
-                               page=page, pages=max(1, (total + PAGE_SIZE - 1) // PAGE_SIZE))
+                               page=page, pages=max(1, (total + PAGE_SIZE - 1) // PAGE_SIZE),
+                               included=included, excluded=excluded)
 
     @app.get('/messages/<int:message_id>')
     def message_detail(message_id):
