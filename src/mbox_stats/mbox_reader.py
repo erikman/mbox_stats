@@ -4,10 +4,18 @@ import email
 from email.policy import default
 
 
+def unescape_from_line(line: bytes) -> bytes:
+    if line.startswith(b'>') and line.lstrip(b'>').startswith(b'From '):
+        return line[1:]
+    return line
+
+
 class MboxReader:
     def __init__(self, handle):
         self._handle = handle
-        assert self._handle.readline().startswith(b'From ')
+        first_line = self._handle.readline()
+        assert first_line.startswith(b'From ')
+        self._pos = len(first_line)
 
     def __enter__(self):
         return self
@@ -29,6 +37,21 @@ class MboxReader:
                     break
                 lines = []
                 continue
-            if line.startswith(b'>') and line.lstrip(b'>').startswith(b'From '):
-                line = line[1:]
-            lines.append(line)
+            lines.append(unescape_from_line(line))
+
+    def iter_with_offsets(self):
+        """Yield (offset, raw_length, message_bytes); offset and raw_length refer to the decompressed mbox stream."""
+        offset = self._pos
+        lines = []
+        while True:
+            line = self._handle.readline()
+            if line == b'' or line.startswith(b'From '):
+                yield offset, self._pos - offset, b''.join(lines)
+                if line == b'':
+                    break
+                self._pos += len(line)
+                offset = self._pos
+                lines = []
+                continue
+            self._pos += len(line)
+            lines.append(unescape_from_line(line))

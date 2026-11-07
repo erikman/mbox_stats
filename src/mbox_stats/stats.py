@@ -4,6 +4,8 @@ import pathlib
 import logging
 from email.header import decode_header
 
+from mbox_stats.mbox_reader import MboxReader
+
 logger = logging.getLogger(__name__)
 
 
@@ -197,7 +199,7 @@ class MessageSizePerSenderDomain:
                 output.write(f"{domain}: {human_readable_size(size)} ({count} messages)\n")
 
 
-def calculate_stats(mailbox: mailbox.Mailbox, output):
+def calculate_stats(mailbox: MboxReader, output):
     stats = [
         BasicStats(),
         SizePerMonth(),
