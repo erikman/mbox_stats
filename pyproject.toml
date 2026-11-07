@@ -11,7 +11,10 @@ classifiers = [
     "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: 3.14",
 ]
-dependencies = ["beautifulsoup4>=4.13,<5"]
+dependencies = ["beautifulsoup4>=4.13,<5", "flask>=3.1,<4"]
+
+[project.scripts]
+mbox-serve = "mbox_stats.server:main"
 
 [dependency-groups]
 dev = ["pytest>=8.3,<9"]

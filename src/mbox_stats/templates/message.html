@@ -1,0 +1,37 @@
+{% extends 'base.html' %}
+{% block title %}{{ message.subject or '(No subject)' }} | Mail Archive{% endblock %}
+{% block content %}
+<nav class="message-toolbar" aria-label="Message actions">
+  <a class="button secondary" href="{{ url_for('search', q=q, page=page) }}">&larr; Messages</a>
+  <a class="button secondary" href="{{ url_for('message_raw', message_id=message.id) }}" download>Download .eml</a>
+</nav>
+<article>
+  <header class="message-heading">
+    <h1>{{ message.subject or '(No subject)' }}</h1>
+    <dl class="headers">
+      <dt>From</dt><dd>{{ message.from_name or '' }}{% if message.from_addr %} &lt;{{ message.from_addr }}&gt;{% endif %}{% if not message.from_name and not message.from_addr %}Unknown sender{% endif %}</dd>
+      {% for kind in ['to', 'cc', 'bcc'] %}
+      {% set entries = recipients|selectattr('kind', 'equalto', kind)|list %}
+      {% if entries %}<dt>{{ kind|capitalize }}</dt><dd>{% for recipient in entries %}{{ recipient.name or '' }}{% if recipient.address %} &lt;{{ recipient.address }}&gt;{% endif %}{{ ', ' if not loop.last else '' }}{% endfor %}</dd>{% endif %}
+      {% endfor %}
+      <dt>Date</dt><dd>{{ message.date_utc|email_date }}</dd>
+      {% if labels %}<dt>Labels</dt><dd>{{ labels|map(attribute='name')|join(', ') }}</dd>{% endif %}
+    </dl>
+  </header>
+  <nav class="view-tabs" aria-label="Message format">
+    <a href="{{ url_for('message_detail', message_id=message.id, q=q, page=page) }}" {% if view != 'html' or not has_html %}aria-current="page"{% endif %}>Plain Text</a>
+    {% if has_html %}<a href="{{ url_for('message_detail', message_id=message.id, q=q, page=page, view='html') }}" {% if view == 'html' %}aria-current="page"{% endif %}>HTML</a>{% endif %}
+  </nav>
+  {% if view == 'html' and has_html %}
+  <iframe class="email-frame" title="HTML email body" sandbox="" referrerpolicy="no-referrer" src="{{ url_for('message_html', message_id=message.id) }}"></iframe>
+  {% else %}
+  <div class="email-body">{{ body or '(No text body)' }}</div>
+  {% endif %}
+  {% if attachments %}
+  <section class="attachments" aria-labelledby="attachments-title">
+    <h2 id="attachments-title">Attachments <span class="muted">{{ attachments|length }}</span></h2>
+    <ul>{% for attachment in attachments %}<li><a href="{{ url_for('attachment', message_id=message.id, attachment_index=attachment.index) }}" download>{{ attachment.name }}</a><span class="muted">{{ attachment.type }}</span></li>{% endfor %}</ul>
+  </section>
+  {% endif %}
+</article>
+{% endblock %}

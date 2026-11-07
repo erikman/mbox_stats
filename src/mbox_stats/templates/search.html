@@ -1,0 +1,27 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="section-heading">
+  <h1>{{ 'Search Results' if q else 'All Messages' }}</h1>
+  <span class="muted">{{ '{:,}'.format(total) }} {{ 'message' if total == 1 else 'messages' }}</span>
+</div>
+<div class="message-list">
+  {% for message in messages %}
+  <a class="message-row" href="{{ url_for('message_detail', message_id=message.id, q=q, page=page) }}">
+    <span class="sender">{{ message.from_name or message.from_addr or 'Unknown sender' }}</span>
+    <span class="message-summary">
+      <strong>{{ message.subject or '(No subject)' }}</strong>
+      <span class="preview">{{ message.preview or '' }}</span>
+    </span>
+    <span class="row-meta"><time>{{ message.date_utc|email_date }}</time>{% if message.attachment_count %}<span class="attachment-count">{{ message.attachment_count }} {{ 'attachment' if message.attachment_count == 1 else 'attachments' }}</span>{% endif %}</span>
+  </a>
+  {% else %}
+  <p class="empty-state">{{ 'No messages on this page.' if page > 1 else ('No matching messages.' if q else 'The archive is empty.') }}</p>
+  {% endfor %}
+</div>
+<nav class="pagination" aria-label="Search result pages">
+  {% if page > 1 %}<a class="button secondary" href="{{ url_for('search', q=q, page=page - 1) }}" title="Previous page" aria-label="Previous page">&larr;</a>{% endif %}
+  <span>Page {{ page }} of {{ pages }}</span>
+  {% if page < pages %}<a class="button secondary" href="{{ url_for('search', q=q, page=page + 1) }}" title="Next page" aria-label="Next page">&rarr;</a>{% endif %}
+  {% if page > pages %}<a href="{{ url_for('search', q=q) }}">First page</a>{% endif %}
+</nav>
+{% endblock %}

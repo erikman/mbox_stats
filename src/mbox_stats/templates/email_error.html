@@ -1,0 +1,10 @@
+{% extends 'base.html' %}
+{% block title %}{{ error.name }} | Mail Archive{% endblock %}
+{% block content %}
+<section class="error-state">
+  <span class="error-code">{{ error.code }}</span>
+  <h1>{{ error.name }}</h1>
+  <p>{{ error.description }}</p>
+  <a class="button secondary" href="{{ url_for('search') }}">&larr; Messages</a>
+</section>
+{% endblock %}

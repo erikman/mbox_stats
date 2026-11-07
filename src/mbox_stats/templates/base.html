@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Mail Archive{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='server.css') }}">
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="masthead">
+    <a class="brand" href="{{ url_for('search') }}">Mail Archive</a>
+    <form class="search-form" action="{{ url_for('search') }}" method="get" role="search">
+      <label class="sr-only" for="search">Search emails</label>
+      <input id="search" name="q" type="search" value="{{ q }}" placeholder="Search emails" maxlength="2000">
+      <button type="submit">Search</button>
+    </form>
+  </header>
+  <main id="main" class="workspace">{% block content %}{% endblock %}</main>
+</body>
+</html>
