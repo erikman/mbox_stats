@@ -16,6 +16,7 @@ from werkzeug.utils import secure_filename
 
 from mbox_stats import database
 from mbox_stats.mbox_file import compression_of, open_mbox_file
+from mbox_stats.stats import human_readable_size
 
 logger = logging.getLogger(__name__)
 PAGE_SIZE = 50
@@ -289,12 +290,15 @@ def _register_routes(app: Flask):
                 parameters.append(timestamp)
             if conditions:
                 source += ' WHERE ' + ' AND '.join(conditions)
-        total = conn.execute(f'SELECT count(*) FROM {source}', parameters).fetchone()[0]
+        total, total_size = conn.execute(
+            f'SELECT count(*), coalesce(sum(m.size), 0) FROM {source}', parameters
+        ).fetchone()
         messages = conn.execute(
             f'SELECT m.* FROM {source} ORDER BY m.date_utc DESC, m.id DESC LIMIT ? OFFSET ?',
             (*parameters, PAGE_SIZE, (page - 1) * PAGE_SIZE),
         ).fetchall()
-        return render_template('search.html', messages=messages, total=total, q=query,
+        return render_template('search.html', messages=messages, total=total,
+                       total_size=human_readable_size(total_size), q=query,
                                page=page, pages=max(1, (total + PAGE_SIZE - 1) // PAGE_SIZE),
                                included=expressions.included, excluded=expressions.excluded)
 

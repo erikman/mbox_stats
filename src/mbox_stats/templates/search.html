@@ -2,7 +2,10 @@
 {% block content %}
 <div class="section-heading">
   <h1>{{ 'Search Results' if q else 'All Messages' }}</h1>
-  <span class="muted">{{ '{:,}'.format(total) }} {{ 'message' if total == 1 else 'messages' }}</span>
+  <div class="muted">
+    <div>{{ '{:,}'.format(total) }} {{ 'message' if total == 1 else 'messages' }}</div>
+    <div>{{ total_size }} total</div>
+  </div>
 </div>
 {% if included or excluded %}
 <div class="search-expressions">

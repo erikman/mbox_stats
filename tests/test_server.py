@@ -7,6 +7,7 @@ import pytest
 from bs4 import BeautifulSoup
 
 from mbox_stats import database, server
+from mbox_stats.stats import human_readable_size
 
 
 @pytest.fixture
@@ -324,7 +325,11 @@ def test_filtered_pagination_keeps_total_and_query(search_client, monkeypatch):
     monkeypatch.setattr(server, 'PAGE_SIZE', 1)
     query = 'label:work -From:nobody'
     soup = BeautifulSoup(search_client.get('/', query_string={'q': query, 'page': 2}).data, 'html.parser')
-    assert '2 messages' in soup.select_one('.section-heading').get_text()
+    heading = soup.select_one('.section-heading').get_text()
+    assert '2 messages' in heading
+    with sqlite3.connect(search_client.application.config['DATABASE_URI'], uri=True) as conn:
+        total_size = conn.execute('SELECT sum(size) FROM messages WHERE id IN (1, 2)').fetchone()[0]
+    assert f'{human_readable_size(total_size)} total' in heading
     assert [row.select_one('strong').get_text() for row in soup.select('.message-row')] == ['Project update']
     assert soup.select_one('.pagination a')['href'] == '/?q=label:work+-From:nobody&page=1'
 
