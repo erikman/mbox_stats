@@ -7,7 +7,7 @@ import sqlite3
 from contextlib import closing
 from email.message import EmailMessage, Message, MIMEPart
 from pathlib import Path
-from typing import Literal, overload
+from typing import Literal, NamedTuple, overload
 
 from bs4 import BeautifulSoup
 from flask import Flask, Response, abort, current_app, g, render_template, request, send_file
@@ -103,7 +103,13 @@ def _search_parameters() -> tuple[str, int]:
     return query, page
 
 
-def _search_expressions(query: str) -> tuple[str, str, list[tuple[str, int, bool]]]:
+class SearchExpressions(NamedTuple):
+    included: str
+    excluded: str
+    date_filters: list[tuple[str, int, bool]]
+
+
+def _search_expressions(query: str) -> SearchExpressions:
     fields = {
         'label': 'labels', 'labels': 'labels',
         'from': '{from_name from_addr}', 'from_name': 'from_name', 'from_addr': 'from_addr',
@@ -151,7 +157,7 @@ def _search_expressions(query: str) -> tuple[str, str, list[tuple[str, int, bool
         (excluded if negative else included).append(expression)
     if query[end:].strip():
         abort(400, description='Invalid search expression.')
-    return ' AND '.join(included), ' OR '.join(excluded), date_filters
+    return SearchExpressions(' AND '.join(included), ' OR '.join(excluded), date_filters)
 
 
 @overload
@@ -255,10 +261,10 @@ def _register_routes(app: Flask):
         conn = _connection()
         source = 'messages m'
         parameters = []
-        included, excluded, date_filters = _search_expressions(query)
+        expressions = _search_expressions(query)
         if query:
             try:
-                for expression in (included, excluded):
+                for expression in (expressions.included, expressions.excluded):
                     if expression:
                         conn.execute('SELECT rowid FROM messages_fts WHERE messages_fts MATCH ? LIMIT 1',
                                      (expression,)).fetchone()
@@ -268,11 +274,11 @@ def _register_routes(app: Flask):
                     abort(400, description='Invalid search expression.')
                 raise
             conditions = []
-            for expression, operator in ((included, 'IN'), (excluded, 'NOT IN')):
+            for expression, operator in ((expressions.included, 'IN'), (expressions.excluded, 'NOT IN')):
                 if expression:
                     conditions.append(f'm.id {operator} (SELECT rowid FROM messages_fts WHERE messages_fts MATCH ?)')
                     parameters.append(expression)
-            for operator, timestamp, negative in date_filters:
+            for operator, timestamp, negative in expressions.date_filters:
                 if operator == 'before':
                     condition = 'm.date_utc >= ?' if negative else 'm.date_utc < ?'
                 else:
@@ -290,7 +296,7 @@ def _register_routes(app: Flask):
         ).fetchall()
         return render_template('search.html', messages=messages, total=total, q=query,
                                page=page, pages=max(1, (total + PAGE_SIZE - 1) // PAGE_SIZE),
-                               included=included, excluded=excluded)
+                               included=expressions.included, excluded=expressions.excluded)
 
     @app.get('/messages/<int:message_id>')
     def message_detail(message_id):

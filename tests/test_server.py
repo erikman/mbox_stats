@@ -78,6 +78,13 @@ def test_cli_rejects_invalid_arguments(argv):
     assert exc.value.code == 2
 
 
+def test_search_expressions_returns_named_fields():
+    expressions = server._search_expressions('subject:"First message" -from:alice before:2022-01-02')
+    assert expressions.included == 'subject : "First message"'
+    assert expressions.excluded == '{from_name from_addr} : "alice"'
+    assert expressions.date_filters == [('before', 1641081600, False)]
+
+
 @pytest.mark.parametrize('query', ['First', 'Alice', 'bob', 'Important', 'preview:body', 'subject:First'])
 def test_search_uses_existing_fts_fields(app, query):
     response = app.test_client().get('/', query_string={'q': query})
